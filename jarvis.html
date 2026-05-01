@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>JARVIS</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:100vw;height:100vh;background:#000;color:#00f0ff;font-family:'Share Tech Mono',monospace;display:flex;justify-content:center;align-items:center}
+.container{display:flex;flex-direction:column;width:480px;height:640px;padding:16px}
+.logo{font-family:'Orbitron',sans-serif;font-size:32px;font-weight:900;color:#00f0ff;letter-spacing:12px;text-align:center;animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}
+.subtitle{font-size:9px;color:#00f0ff44;letter-spacing:3px;text-align:center;margin-bottom:10px}
+.chat-box{flex:1;background:#000;border:1px solid #00f0ff22;border-radius:6px;overflow-y:auto;padding:10px;margin:8px 0}
+.chat-box::-webkit-scrollbar{width:2px}
+.chat-box::-webkit-scrollbar-thumb{background:#00f0ff33}
+.message{margin-bottom:10px}
+.msg-label{font-size:8px;letter-spacing:2px;margin-bottom:3px}
+.msg-label.jarvis{color:#00f0ff66}
+.msg-label.user{color:#ff6b3566;text-align:right}
+.msg-text{font-size:13px;line-height:1.5;padding:8px 12px;border-radius:5px;max-width:90%}
+.msg-text.jarvis{background:#00f0ff0d;border-left:2px solid #00f0ff55;color:#00f0ffcc}
+.msg-text.user{background:#ff6b350d;border-right:2px solid #ff6b3555;color:#ff6b35cc;margin-left:auto;text-align:right}
+.typing{display:flex;gap:4px;padding:8px 12px;background:#00f0ff0d;border-radius:5px;width:fit-content}
+.typing span{width:4px;height:4px;background:#00f0ff66;border-radius:50%;animation:bounce 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.quick-commands{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0}
+.qcmd{background:transparent;border:1px solid #00f0ff22;color:#00f0ff66;padding:4px 10px;border-radius:3px;font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer}
+.qcmd:hover{border-color:#00f0ff;color:#00f0ff}
+.input-row{display:flex;gap:8px;margin-top:8px;align-items:center}
+#userInput{flex:1;background:#00f0ff08;border:1px solid #00f0ff33;border-radius:4px;padding:10px 12px;color:#00f0ff;font-family:'Share Tech Mono',monospace;font-size:13px;outline:none}
+#userInput::placeholder{color:#00f0ff33}
+.send-btn{background:transparent;border:1px solid #00f0ff55;color:#00f0ff;font-family:'Orbitron',sans-serif;font-size:10px;padding:10px 14px;border-radius:4px;cursor:pointer}
+.mic-btn{background:transparent;border:1px solid #ff6b3544;color:#ff6b35;font-size:16px;width:42px;height:42px;border-radius:4px;cursor:pointer}
+.mic-btn.on{background:#ff6b3522;border-color:#ff6b35}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">JARVIS</div>
+  <div class="subtitle">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+  <div class="chat-box" id="chatBox"></div>
+  <div class="quick-commands">
+    <button class="qcmd" id="q1">SAAT</button>
+    <button class="qcmd" id="q2">ŞAKA</button>
+    <button class="qcmd" id="q3">YZ NEDİR</button>
+    <button class="qcmd" id="q4">FİLM ÖNER</button>
+    <button class="qcmd" id="q5">PLAN YAP</button>
+    <button class="qcmd" id="q6">ŞİİR YAZ</button>
+  </div>
+  <div class="input-row">
+    <button class="mic-btn" id="micBtn">🎤</button>
+    <input type="text" id="userInput" placeholder="Komutunuzu yazın efendim..." autocomplete="off"/>
+    <button class="send-btn" id="sendBtn">GÖNDER</button>
+  </div>
+</div>
+<script>
+const chatBox=document.getElementById("chatBox");
+const userInput=document.getElementById("userInput");
+const micBtn=document.getElementById("micBtn");
+let recognition=null,micOn=false,conversationHistory=[],isProcessing=false;
+const apiKey="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";
+const SYSTEM="Sen JARVIS adli gelismis bir yapay zeka asistansin. Her zaman efendim diye hitap et. Kisa net ve zekice cevaplar ver.";
+
+document.getElementById("sendBtn").addEventListener("click",sendMessage);
+document.getElementById("userInput").addEventListener("keydown",function(e){if(e.key==="Enter")sendMessage();});
+document.getElementById("q1").addEventListener("click",function(){sendQuick("Simdi saat kac?");});
+document.getElementById("q2").addEventListener("click",function(){sendQuick("Bana komik bir saka anlat");});
+document.getElementById("q3").addEventListener("click",function(){sendQuick("Yapay zeka nedir?");});
+document.getElementById("q4").addEventListener("click",function(){sendQuick("Bana iyi bir film oner");});
+document.getElementById("q5").addEventListener("click",function(){sendQuick("Bugun icin plan yap");});
+document.getElementById("q6").addEventListener("click",function(){sendQuick("Turkce siir yaz");});
+micBtn.addEventListener("click",toggleMic);
+
+function addMessage(text,sender){
+  var div=document.createElement("div");div.className="message";
+  var label=document.createElement("div");label.className="msg-label "+sender;
+  label.textContent=sender==="jarvis"?"◈ JARVIS":"▸ SİZ";
+  var msg=document.createElement("div");msg.className="msg-text "+sender;
+  msg.textContent=text;div.appendChild(label);div.appendChild(msg);
+  chatBox.appendChild(div);chatBox.scrollTop=chatBox.scrollHeight;
+}
+
+function showTyping(){
+  var div=document.createElement("div");div.className="message";div.id="typingIndicator";
+  var label=document.createElement("div");label.className="msg-label jarvis";label.textContent="◈ JARVIS";
+  var t=document.createElement("div");t.className="typing";
+  t.innerHTML="<span></span><span></span><span></span>";
+  div.appendChild(label);div.appendChild(t);chatBox.appendChild(div);chatBox.scrollTop=chatBox.scrollHeight;
+}
+
+function removeTyping(){var t=document.getElementById("typingIndicator");if(t)t.remove();}
+
+function speak(text){
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(text);
+  u.lang="tr-TR";u.rate=0.9;u.pitch=0.8;
+  var voices=speechSynthesis.getVoices();
+  var tr=voices.find(function(v){return v.lang.startsWith("tr");});
+  if(tr)u.voice=tr;
+  speechSynthesis.speak(u);
+}
+
+async function callAPI(text){
+  conversationHistory.push({role:"user",content:text});
+  showTyping();
+  var now=new Date();
+  try{
+    var r=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey},
+      body:JSON.stringify({model:"llama-3.3-70b-versatile",max_tokens:500,
+        messages:[{role:"system",content:SYSTEM+" Saat:"+now.toLocaleTimeString("tr-TR")}].concat(conversationHistory)})
+    });
+    var data=await r.json();
+    removeTyping();
+    if(data.choices&&data.choices[0]){
+      var reply=data.choices[0].message.content;
+      conversationHistory.push({role:"assistant",content:reply});
+      addMessage(reply,"jarvis");
+      speak(reply);
+    }else{
+      addMessage("Hata olustu efendim.","jarvis");
+    }
+  }catch(err){
+    removeTyping();
+    addMessage("Baglanti hatasi efendim.","jarvis");
+  }
+  isProcessing=false;
+  if(micOn)startListening();
+}
+
+async function sendMessage(){
+  var text=userInput.value.trim();
+  if(!text||isProcessing)return;
+  userInput.value="";
+  isProcessing=true;
+  addMessage(text,"user");
+  await callAPI(text);
+}
+
+function sendQuick(text){
+  if(isProcessing)return;
+  isProcessing=true;
+  addMessage(text,"user");
+  callAPI(text);
+}
+
+function startListening(){
+  if(!micOn)return;
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR)return;
+  recognition=new SR();
+  recognition.lang="tr-TR";
+  recognition.continuous=false;
+  recognition.interimResults=false;
+  recognition.onresult=function(e){
+    var text=e.results[0][0].transcript;
+    if(!isProcessing){
+      isProcessing=true;
+      addMessage(text,"user");
+      callAPI(text);
+    }
+  };
+  recognition.onend=function(){
+    if(micOn&&!isProcessing)setTimeout(startListening,300);
+  };
+  recognition.onerror=function(){
+    if(micOn&&!isProcessing)setTimeout(startListening,1000);
+  };
+  try{recognition.start();}catch(e){}
+}
+
+function toggleMic(){
+  if(micOn){
+    micOn=false;
+    if(recognition)try{recognition.stop();}catch(e){}
+    micBtn.textContent="🎤";
+    micBtn.className="mic-btn";
+    addMessage("Mikrofon kapatildi efendim.","jarvis");
+  }else{
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(){
+      micOn=true;
+      micBtn.textContent="🔴";
+      micBtn.className="mic-btn on";
+      addMessage("Mikrofon acildi efendim! Konusabilirsiniz.","jarvis");
+      startListening();
+    }).catch(function(){
+      addMessage("Mikrofon izni gerekli efendim. Adres cubugu solundaki ikona tiklayin ve mikrofonа izin verin.","jarvis");
+    });
+  }
+}
+
+window.onload=function(){
+  speechSynthesis.getVoices();
+  var now=new Date();
+  var g="Hos geldiniz efendim. "+now.toLocaleTimeString("tr-TR")+" itibaриyla JARVIS aktif. Mikrofon icin 🎤 butonuna basin!";
+  addMessage(g,"jarvis");
+  conversationHistory.push({role:"assistant",content:g});
+};
+</script>
+</body>
+</html>
